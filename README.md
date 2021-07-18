@@ -1,3 +1,11 @@
+Submission for Gitcoin Bounty: https://gitcoin.co/issue/shapeshift/airdrop-merkle/1/100026107
+
+Somewhat quick and dirty, also not very Pythonic, but this is a one-time-use script.
+
+To run, set environment variables ETHERSCAN_PRO_API_KEY and COVALENT API KEY, then run python3 src/shapeshift-airdrop-merkle.py
+
+
+
 As discussed in the ShapeShift discord and forum, there is a proposal developing to issue a new airdrop contract rewarding members of the original 13 DAO communities whose governance tokens were staked or deposited in liquidity pools at the time of the snapshot.
 
 More info: https://forum.shapeshift.com/t/mini-airdrop-to-dao-communities-who-were-missed-due-to-staking-or-lping/96/3
