@@ -1,20 +1,26 @@
 import os
 import requests
 import csv
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
+""" Commented addresses below have been moved to the governance_token_addresses_especial
+    dict as a temporary workaround until Covalent fixes their token_holders endpoint. We
+    can fetch the data using the token_holders_changes endpoint instead and check the diff
+    between the genesis block and block height defined below.
 
+"""
 governance_token_addresses = {
-    # "0x19d97d8fa813ee2f51ad4b4e04ea08baf4dffc28": 1,  # Test
-    "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e": 39790.41,  # Yearn
-    "0xc00e94cb662c3520282e6f5717214004a7f26888": 359.37,  # Compound
-    "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9": 328.55,  # Aave
-    "0xdbdb4d16eda451d0503b854cf79d55697f90c8df": 710.01,  # Alchemix
-    "0x111111111117dc0aa78b770fa6a738034120c302": 3.05,  # 1inch
-    "0xe41d2489571d322189246dafa5ebde1f4699f498": 0.9521,  # 0x
-    "0xD533a949740bb3306d119CC777fa900bA034cd52": 2.367,  # Curve
-    "0xba100000625a3754423978a60c9317c58a424e3d": 25.37,  # Balancer
-    "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2": 3217.32,  # Maker
+    # "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e": 39790.41,  # Yearn
+    # "0xc00e94cb662c3520282e6f5717214004a7f26888": 359.37,  # Compound
+    # "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9": 328.55,  # Aave
+    # "0x111111111117dc0aa78b770fa6a738034120c302": 3.05,  # 1inch
+    # "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2": 3217.32,  # Maker
+    # "0xdbdb4d16eda451d0503b854cf79d55697f90c8df": 710.01,  # Alchemix
+    # "0xe41d2489571d322189246dafa5ebde1f4699f498": 0.9521,  # 0x
+    # "0xD533a949740bb3306d119CC777fa900bA034cd52": 2.367,  # Curve
+    # "0xba100000625a3754423978a60c9317c58a424e3d": 25.37,  # Balancer
     "0xde30da39c46104798bb5aa3fe8b9e0e1f348163f": 10.72,  # Gitcoin
     "0x3472A5A71965499acd81997a54BBA8D852C6E53d": 13.91,  # BadgerDAO
 }
@@ -22,6 +28,15 @@ governance_token_addresses = {
 governance_token_addresses_especial = {
     "0x1f9840a85d5af5bf1d1762f925bdaddc4201f984": 23.78,  # Uniswap
     "0x6b3595068778dd592e39a122f4f5a5cf09c90fe2": 9.98,  # Sushiswap
+    "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e": 39790.41,  # Yearn
+    "0xc00e94cb662c3520282e6f5717214004a7f26888": 359.37,  # Compound
+    "0x7fc66500c84a76ad7e9c93437bfc5ac33e2ddae9": 328.55,  # Aave
+    "0x111111111117dc0aa78b770fa6a738034120c302": 3.05,  # 1inch
+    "0x9f8f72aa9304c8b593d555f12ef6589cc3a579a2": 3217.32,  # Maker
+    "0xdbdb4d16eda451d0503b854cf79d55697f90c8df": 710.01,  # Alchemix
+    "0xe41d2489571d322189246dafa5ebde1f4699f498": 0.9521,  # 0x
+    "0xD533a949740bb3306d119CC777fa900bA034cd52": 2.367,  # Curve
+    "0xba100000625a3754423978a60c9317c58a424e3d": 25.37,  # Balancer
 }
 
 # Get historical price information by block height for these and apply threshold
@@ -60,6 +75,7 @@ staking_tokens = [
     "0x4da27a545c0c5b758a6ba100e3a049001de870f5",  # AAVE stakers hold staked AAVE (stkAAVE) tokens
     "0x19d97d8fa813ee2f51ad4b4e04ea08baf4dffc28",  # BadgerDAO stakers are given bBadger tokens
     "0xa0446d8804611944f1b527ecd37d7dcbe442caba",  # 1Inch stakers hold staked 1Inch (stk1Inch) tokens
+    "0xc3f279090a47e80990fe3a9c30d24cb117ef91a8",  # SushiSwap ETH/ALCX stakers hold ETH/ALCX LP tokens
 ]
 
 
@@ -70,31 +86,54 @@ covalent_api_key = os.environ.get("COVALENT_API_KEY")
 
 eligible_addresses = []
 
+retry_strategy = Retry(
+    total=10,
+    status_forcelist=[429, 500, 502, 503, 504, 524],
+    method_whitelist=["HEAD", "GET", "OPTIONS"],
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+http = requests.Session()
+http.mount("https://", adapter)
+http.mount("http://", adapter)
+
 
 def get_governance_token_holders():
     for key in governance_token_addresses:
-        r = requests.get(
-            f"https://api.covalenthq.com/v1/1/tokens/{key}/token_holders/?block-height={block_height}&key={covalent_api_key}"
-        )
-        if r.status_code == 200:
-            request_payload = r.json()
-            if len(request_payload["data"]["items"]):
-                print(
-                    f"Fetching holders for {request_payload['data']['items'][0]['contract_ticker_symbol']} governance token"
-                )
+        page_number = 0
+        page_size = 10000
+        has_more = True
+        while has_more:
+            r = http.get(
+                f"https://api.covalenthq.com/v1/1/tokens/{key}/token_holders/?block-height={block_height}&key={covalent_api_key}&page-number={page_number}&page-size={page_size}"
+            )
+            if r.status_code == 200:
+                request_payload = r.json()
+                if len(request_payload["data"]["items"]):
+                    total_count = request_payload["data"]["pagination"]["total_count"]
+                    range_lower = (page_number * page_size) + 1
+                    range_upper = (
+                        (page_number + 1) * page_size
+                        if (page_number + 1) * page_size < total_count
+                        else total_count
+                    )
+                    print(
+                        f"Fetching accounts holding {request_payload['data']['items'][0]['contract_ticker_symbol']} governance token. ({range_lower}-{range_upper} of {total_count})"
+                    )
+                else:
+                    continue
+                for holder in request_payload["data"]["items"]:
+                    address_balance = (
+                        int(holder["balance"])
+                        / (10 ** holder["contract_decimals"])
+                        * governance_token_addresses[key]
+                    )
+                    if address_balance >= balance_threshold:
+                        eligible_addresses.append(holder["address"])
+                has_more = request_payload["data"]["pagination"]["has_more"]
+                page_number += 1
             else:
-                continue
-            for holder in request_payload["data"]["items"]:
-                address_balance = (
-                    int(holder["balance"])
-                    / (10 ** holder["contract_decimals"])
-                    * governance_token_addresses[key]
-                )
-                if address_balance >= balance_threshold:
-                    eligible_addresses.append(holder["address"])
-        else:
-            print(f"Request returned non-success code: {r.status_code}")
-            print(r)
+                print(f"Request returned non-success code {r.status_code}")
+                break
     get_governance_token_holders_especial()
 
 
@@ -103,71 +142,116 @@ def get_governance_token_holders_especial():
     the list of token holders is so large. As a workaround, the same data can be extracted for these contracts
     can be extracted using a different endpoint and some fanagling of the returned data."""
     for key in governance_token_addresses_especial:
-        print(f"Fetching holders for governance token with address: {key}")
-        r = requests.get(
-            f"https://api.covalenthq.com/v1/1/tokens/{key}/token_holders_changes/?starting-block=1&ending-block={block_height}&key={covalent_api_key}"
-        )
-        if r.status_code == 200:
-            request_payload = r.json()
-            for item in request_payload["data"]["items"]:
-                address_balance = (
-                    int(item["next_balance"])
-                    / (
-                        10 ** 18
-                    )  # We really should get this dynamically, but this only applies to UNI/SUSHI for now
-                    * governance_token_addresses_especial[key]
-                )
-                if address_balance >= balance_threshold:
-                    eligible_addresses.append((item["token_holder"]))
-        else:
-            print(f"Request returned non-success code: {r.status_code}")
-            print(r)
+        page_number = 0
+        page_size = 50000
+        has_more = True
+        while has_more:
+            r = http.get(
+                f"https://api.covalenthq.com/v1/1/tokens/{key}/token_holders_changes/?starting-block=1&ending-block={block_height}&key={covalent_api_key}&page-number={page_number}&page-size={page_size}"
+            )
+            if r.status_code == 200:
+                request_payload = r.json()
+                if len(request_payload["data"]["items"]):
+                    total_count = request_payload["data"]["pagination"]["total_count"]
+                    range_lower = (page_number * page_size) + 1
+                    range_upper = (
+                        (page_number + 1) * page_size
+                        if (page_number + 1) * page_size < total_count
+                        else total_count
+                    )
+                    print(
+                        f"Fetching accounts holding governance token with address: {key}. ({range_lower}-{range_upper} of {total_count})"
+                    )
+                else:
+                    continue
+                for item in request_payload["data"]["items"]:
+                    address_balance = (
+                        int(item["next_balance"])
+                        / (
+                            10 ** 18
+                        )  # We really should get this dynamically, but this only applies to UNI/SUSHI for now
+                        * governance_token_addresses_especial[key]
+                    )
+                    if address_balance >= balance_threshold:
+                        eligible_addresses.append((item["token_holder"]))
+                has_more = request_payload["data"]["pagination"]["has_more"]
+                page_number += 1
+            else:
+                print(f"Request returned non-success code {r.status_code}")
+                break
 
 
 def get_lp_token_holders():
     for key in lp_token_addresses:
-        r = requests.get(
-            f"https://api.covalenthq.com/v1/1/tokens/{key}/token_holders/?block-height={block_height}&key={covalent_api_key}"
-        )
-        if r.status_code == 200:
-            request_payload = r.json()
-            if len(request_payload["data"]["items"]):
-                print(
-                    f"Fetching holders for {request_payload['data']['items'][0]['contract_ticker_symbol']} LP token"
-                )
+        page_number = 0
+        page_size = 10000
+        has_more = True
+        while has_more:
+            r = http.get(
+                f"https://api.covalenthq.com/v1/1/tokens/{key}/token_holders/?block-height={block_height}&key={covalent_api_key}&page-number={page_number}&page-size={page_size}"
+            )
+            if r.status_code == 200:
+                request_payload = r.json()
+                if len(request_payload["data"]["items"]):
+                    total_count = request_payload["data"]["pagination"]["total_count"]
+                    range_lower = (page_number * page_size) + 1
+                    range_upper = (
+                        (page_number + 1) * page_size
+                        if (page_number + 1) * page_size < total_count
+                        else total_count
+                    )
+                    print(
+                        f"Fetching accounts holding {request_payload['data']['items'][0]['contract_ticker_symbol']} LP token. ({range_lower}-{range_upper} of {total_count})"
+                    )
+                else:
+                    continue
+                for holder in request_payload["data"]["items"]:
+                    address_balance = (
+                        int(holder["balance"])
+                        / (10 ** holder["contract_decimals"])
+                        * lp_token_addresses[key]
+                    )
+                    if address_balance >= balance_threshold:
+                        eligible_addresses.append(holder["address"])
+                has_more = request_payload["data"]["pagination"]["has_more"]
+                page_number += 1
             else:
-                continue
-            for holder in request_payload["data"]["items"]:
-                address_balance = (
-                    int(holder["balance"])
-                    / (10 ** holder["contract_decimals"])
-                    * lp_token_addresses[key]
-                )
-                if address_balance >= balance_threshold:
-                    eligible_addresses.append(holder["address"])
-        else:
-            print(f"Request returned non-success code: {r.status_code}")
-            print(r)
+                print(f"Request returned non-success code {r.status_code}")
+                break
 
 
 def get_staking_token_holders():
     for token in staking_tokens:
-        r = requests.get(
-            f"https://api.covalenthq.com/v1/1/tokens/{token}/token_holders/?block-height={block_height}&key={covalent_api_key}"
-        )
-        if r.status_code == 200:
-            request_payload = r.json()
-            if len(request_payload["data"]["items"]):
-                print(
-                    f"Fetching holders for {request_payload['data']['items'][0]['contract_ticker_symbol']} staking token"
-                )
+        page_number = 0
+        page_size = 10000
+        has_more = True
+        while has_more:
+
+            r = http.get(
+                f"https://api.covalenthq.com/v1/1/tokens/{token}/token_holders/?block-height={block_height}&key={covalent_api_key}&page-number={page_number}&page-size={page_size}"
+            )
+            if r.status_code == 200:
+                request_payload = r.json()
+                if len(request_payload["data"]["items"]):
+                    total_count = request_payload["data"]["pagination"]["total_count"]
+                    range_lower = (page_number * page_size) + 1
+                    range_upper = (
+                        (page_number + 1) * page_size
+                        if (page_number + 1) * page_size < total_count
+                        else total_count
+                    )
+                    print(
+                        f"Fetching accounts holding {request_payload['data']['items'][0]['contract_ticker_symbol']} staking token. ({range_lower}-{range_upper} of {total_count})"
+                    )
+                else:
+                    continue
+                for holder in request_payload["data"]["items"]:
+                    eligible_addresses.append(holder["address"])
+                has_more = request_payload["data"]["pagination"]["has_more"]
+                page_number += 1
             else:
-                continue
-            for holder in request_payload["data"]["items"]:
-                eligible_addresses.append(holder["address"])
-        else:
-            print(f"Request returned non-success code: {r.status_code}")
-            print(r)
+                print(f"Request returned non-success code {r.status_code}")
+                break
 
 
 def remove_duplicates():
@@ -199,7 +283,7 @@ def get_erc20_transfer_events(address):
     page = 0
     print(f"Getting accounts with tokens staked in contract: {address}")
     while data_remaining:
-        r = requests.get(
+        r = http.get(
             f"https://api.etherscan.io/api?module=account&action=txlist&address={address}&startblock=0&endblock={block_height}&apikey={etherscan_pro_api_key}&sort=asc&page={page}&offset={page * 10000}"
         )
         if r.status_code == 200:
@@ -217,7 +301,7 @@ def get_erc20_transfer_events(address):
                 print("Request payload has no length")
                 break
         else:
-            print(f"Request returned non-success code: {r.status_code}")
+            print(f"Request returned non-success code {r.status_code}")
             print(r)
     return transactions
 
@@ -247,23 +331,6 @@ def get_addresses_with_staked_tokens():
 
     global eligible_addresses
     eligible_addresses += addresses
-
-
-def index_token_transfers(address):
-    r = requests.get(
-        f"https://api.covalenthq.com/v1/1/address/{address}/transactions_v2/?&key={covalent_api_key}"
-    )
-    if r.status_code == 200:
-        request_payload = r.json()
-        print(f"Fetching transactions for contract address: {address}")
-        token_transfers = [
-            tx
-            for tx in request_payload["data"]["items"]
-            if tx["log_events"]["decoded"]["name"] == "Transfer"
-        ]
-        print(token_transfers[:2])
-    else:
-        print(f"Request returned non-success code: {r.status_code}")
 
 
 if __name__ == "__main__":
