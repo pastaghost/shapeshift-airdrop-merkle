@@ -21,8 +21,8 @@ governance_token_addresses = {
     # "0xe41d2489571d322189246dafa5ebde1f4699f498": 0.9521,  # 0x
     # "0xD533a949740bb3306d119CC777fa900bA034cd52": 2.367,  # Curve
     # "0xba100000625a3754423978a60c9317c58a424e3d": 25.37,  # Balancer
-    "0xde30da39c46104798bb5aa3fe8b9e0e1f348163f": 10.72,  # Gitcoin
-    "0x3472A5A71965499acd81997a54BBA8D852C6E53d": 13.91,  # BadgerDAO
+    # "0xde30da39c46104798bb5aa3fe8b9e0e1f348163f": 10.72,  # Gitcoin
+    # "0x3472A5A71965499acd81997a54BBA8D852C6E53d": 13.91,  # BadgerDAO
 }
 
 governance_token_addresses_especial = {
@@ -37,6 +37,8 @@ governance_token_addresses_especial = {
     "0xe41d2489571d322189246dafa5ebde1f4699f498": 0.9521,  # 0x
     "0xD533a949740bb3306d119CC777fa900bA034cd52": 2.367,  # Curve
     "0xba100000625a3754423978a60c9317c58a424e3d": 25.37,  # Balancer
+    "0xde30da39c46104798bb5aa3fe8b9e0e1f348163f": 10.72,  # Gitcoin
+    "0x3472A5A71965499acd81997a54BBA8D852C6E53d": 13.91,  # BadgerDAO
 }
 
 # Get historical price information by block height for these and apply threshold
@@ -88,7 +90,7 @@ eligible_addresses = []
 
 retry_strategy = Retry(
     total=10,
-    status_forcelist=[429, 500, 502, 503, 504, 524],
+    status_forcelist=[400, 429, 500, 502, 503, 504, 524],
     method_whitelist=["HEAD", "GET", "OPTIONS"],
 )
 adapter = HTTPAdapter(max_retries=retry_strategy)
@@ -259,13 +261,21 @@ def remove_duplicates():
     eligible_addresses = list(set(eligible_addresses))
 
 
-def remove_airdropped_addresses():
+def remove_airdropped_addresses(from_file=False):
+    addresses = []
+    global eligible_addresses
     with open(
-        os.path.join(os.path.dirname(__file__), "../data/airdropped_addresses.csv")
+        os.path.join(os.path.dirname(__file__), "../data/airdrop_addresses.csv")
     ) as f:
         airdropped_addresses = [row.split(",")[0] for row in f]
-    global eligible_addresses
-    eligible_addresses = list(set(eligible_addresses) - set(airdropped_addresses))
+    if from_file:
+        with open(
+            os.path.join(os.path.dirname(__file__), "../data/eligible_addresses.csv")
+        ) as f:
+            addresses = [row.split(",")[0] for row in f]
+    else:
+        addresses = eligible_addresses
+    eligible_addresses = list(set(addresses) - set(airdropped_addresses))
 
 
 def write_to_csv():
