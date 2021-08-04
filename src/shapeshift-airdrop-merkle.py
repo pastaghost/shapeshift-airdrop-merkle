@@ -44,14 +44,30 @@ governance_token_addresses_especial = {
 # Get historical price information by block height for these and apply threshold
 # Price information from Zerion
 lp_token_addresses = {
-    "0x9928e4046d7c6513326ccea028cd3e7a91c7590a": 1.15,  # UniswapV2 FEI/TRIBE
-    "0x94b0a3d511b6ecdb17ebf877278ab030acb0a878": 103.61,  # UniswapV2 FEI/ETH
-    "0xceff51756c56ceffca006cd410b03ffc46dd3a58": 47950857827.66,  # SushiSwap WBTC/WETH
-    "0x397ff1542f962076d0bfe58ea045ffa2d347aca0": 143525203.84,  # SushiSwap USDC/WETH
-    "0x0ef1b8a0e726fc3948e15b23993015eb1627f210": 6.91,  # 1Inch ETH/1INCH
-    "0xd471b6755eba924ad94dd9144ea50022010efccc": 10.47,  # 1Inch 1INCH/VSP
-    "0xa6f548df93de924d73be7d25dc02554c6bd66db5": 9956.92,  # Balancer 50 WBTC 50 WETH
-    "0x5c6ee304399dbdb9c8ef030ab642b10820db8f56": 54.58,  # Balancer 80 BAL 20 WETH
+    "0xd3d2e2692501a5c9ca623199d38826e513033a17": 1059.31,  # UNI-ETH UniswapV2
+    "0x5aa90c7362ea46b3cbfbd7f01ea5ca69c98fef1c": 256.99,  # UNI-ETH Balancer
+    "0x795065dcc9f64b5614c407a6efdc400da6221fb0": 389.19,  # Sushi-ETH Sushiswap
+    "0xce84867c3c02b05dc570d0135103d3fb9cc19433": 633.60,  # Sushi-ETH UniswapV2
+    "0x088ee5007c98a9677165d78dd2109ae4a3d04d0c": 35081.13,  # YFI-ETH Sushiswap
+    "0x2fdbadf3c4d5a8666bc06645b8358ab803996e28": 43555.28,  # YFI-ETH UniswapV2
+    "0x31503dcb60119a812fee820bb7042752019f2355": 2606.97,  # COMP-ETH Sushiswap
+    "0xefaa1604e82e1b3af8430b90192c1b9e8197e377": 976.25,  # COMP-ETH Balancer
+    "0xd75ea151a61d06868e31f8988d28dfe5e9df57b4": 2033.14,  # AAVE-ETH Sushiswap
+    "0xdfc14d2af169b0d36c4eff567ada9b2e0cae044f": 2221.05,  # AAVE-ETH Uniswap V2
+    "0xc3f279090a47e80990fe3a9c30d24cb117ef91a8": 2892.92,  # ALCX-ETH Sushiswap
+    "0x0ef1b8a0e726fc3948e15b23993015eb1627f210": 6.91,  # 1inch-ETH 1inch
+    "0xd471b6755eba924ad94dd9144ea50022010efccc": 10.47,  # 1inch-VSP 1inch
+    "0x0bc5ae46c32d99c434b7383183aca16dd6e9bdc8": 104.43,  # ZRX-WETH Sushiswap
+    "0xc6f348dd3b91a56d117ec0071c1e9b83c0996de4": 137.88,  # ZRX-ETH UniswapV2
+    "0x33f6ddaea2a8a54062e021873bcaee006cdf4007": 4.99,  # cvxCRV-CRV Sushiswap
+    "0x58dc5a51fe44589beb22e8ce67720b5bc5378009": 574.18,  # WETH-CRV Sushiswap
+    "0x5c6ee304399dbdb9c8ef030ab642b10820db8f56": 54.58,  # 80BAL-20ETH Balancer
+    "0xa70d458a4d9bc0e6571565faee18a48da5c0d593": 939.19,  # BAL-ETH Uniswapv2
+    "0xba13afecda9beb75de5c56bbaf696b880a5a50dd": 6196.95,  # MKR-ETH Sushiswap
+    "0xc2adda861f89bbb333c90c492cb837741916a225": 7294.81,  # MKR-ETH Uniswap v2
+    "0xa3509a16bbfc5992eb01cc861b615ccd8e937da8": 458.46,  # ETH-GTC Uniswapv2
+    "0xcd7989894bc033581532d2cd88da5db0a4b12859": 155113262.53,  # BADGER-WBTC Uniswapv2
+    "0x110492b31c59716ac47337e616804e3e3adc0b4a": 143945303.72,  # BADGER-WBTC Sushiswap
 }
 
 # Contract address, followed by list of function hashes for stake/withdraw methods.
@@ -88,8 +104,12 @@ covalent_api_key = os.environ.get("COVALENT_API_KEY")
 
 eligible_addresses = []
 
+
+''' The Covalent API calls frequently time out, so the GET requests should be automatically retried in the 
+    event that non-200 status codes are returned.
+'''
 retry_strategy = Retry(
-    total=10,
+    total=100,
     status_forcelist=[400, 429, 500, 502, 503, 504, 524],
     method_whitelist=["HEAD", "GET", "OPTIONS"],
 )
