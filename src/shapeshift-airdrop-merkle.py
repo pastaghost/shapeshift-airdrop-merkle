@@ -86,7 +86,13 @@ staking_contract_addresses = {
         "3ccfd60b",
         "4957677c",
     ],  # Curve stakers lock CRV into the veCRV contract
+    # "0xba7f8b5fb1b19c1211c5d49550fcd149177a5eaf": [
+    #     "856a65eb",  # Staking operations usually performed with a call to batchExecute()
+    #     "2e17de78",
+    # ],  
+    # 0x stakers lock ZRX into the 0x staking contract. See lame hack in get_staked_accounts_zrx() below
 }
+
 
 staking_tokens = [
     "0x8798249c2e607446efb7ad49ec89dd1865ff4272",  # Sushi stakers are issued xSUSHI tokens
@@ -105,9 +111,9 @@ covalent_api_key = os.environ.get("COVALENT_API_KEY")
 eligible_addresses = []
 
 
-''' The Covalent API calls frequently time out, so the GET requests should be automatically retried in the 
+""" The Covalent API calls frequently time out, so the GET requests should be automatically retried in the 
     event that non-200 status codes are returned.
-'''
+"""
 retry_strategy = Retry(
     total=100,
     status_forcelist=[400, 429, 500, 502, 503, 504, 524],
@@ -122,7 +128,7 @@ http.mount("http://", adapter)
 def get_governance_token_holders():
     for key in governance_token_addresses:
         page_number = 0
-        page_size = 10000
+        page_size = 50000
         has_more = True
         while has_more:
             r = http.get(
@@ -206,7 +212,7 @@ def get_governance_token_holders_especial():
 def get_lp_token_holders():
     for key in lp_token_addresses:
         page_number = 0
-        page_size = 10000
+        page_size = 50000
         has_more = True
         while has_more:
             r = http.get(
@@ -245,7 +251,7 @@ def get_lp_token_holders():
 def get_staking_token_holders():
     for token in staking_tokens:
         page_number = 0
-        page_size = 10000
+        page_size = 50000
         has_more = True
         while has_more:
 
@@ -352,6 +358,35 @@ def filter_staked_addresses_by_deposit_activity(contract_address, transactions):
 
     return addresses
 
+''' Lame hack for ZRX staking contract, but it does the needful. This contract is unusual, so instead of using
+    the same method as for the other staking contracts, we have to look through the transaction log events to 
+    identify transactions in which the stake function was called.
+'''
+def get_staked_accounts_zrx():
+    global eligible_addresses
+    page_number = 0
+    page_size = 10000
+    has_more = True
+    contract = "0xba7f8b5fb1b19c1211c5d49550fcd149177a5eaf"
+    print(f"Getting accounts with tokens staked in contract: {contract}")
+    while has_more:
+        r = http.get(
+                f"https://api.covalenthq.com/v1/1/address/{contract}/transactions_v2/?key={covalent_api_key}&page-number={page_number}&page-size={page_size}"
+            )
+        if r.status_code == 200:
+            request_payload = r.json()
+            if not len(request_payload["data"]["items"]):
+                continue
+            for tx in request_payload["data"]["items"]:
+                for log_event in tx["log_events"]:
+                    if tx["block_height"] <= block_height and log_event["decoded"] is not None and log_event["decoded"]["name"] == "Stake":
+                        eligible_addresses.append(tx["from_address"])
+            has_more = request_payload["data"]["pagination"]["has_more"]
+            page_number += 1
+        else:
+            print(f"Request returned non-success code {r.status_code}")
+            break
+
 
 def get_addresses_with_staked_tokens():
     addresses = []
@@ -361,6 +396,7 @@ def get_addresses_with_staked_tokens():
 
     global eligible_addresses
     eligible_addresses += addresses
+    get_staked_accounts_zrx()
 
 
 if __name__ == "__main__":
